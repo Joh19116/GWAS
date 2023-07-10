@@ -1,0 +1,259 @@
+---
+title: "GWAS For Undergraduates"
+subtitle: "A guide for understanding and performing a simple GWAS"
+author: "Andrew R. Johnson"
+format: 
+  html:
+    theme: sandstone
+    self-contained: true
+editor: visual
+---
+
+```{r,warning=FALSE}
+#personal libraries I like to use
+library(pander)
+```
+
+
+# What is a GWAS?
+
+A Genome-Wide Association Study or **GWAS** for short, is a statistical method for determining potential relationships between certain parts of an individuals DNA and specific traits expressed by that individual. To explore this idea lets explore some basic biology and what it means.
+
+All life is made up of cells that contain DNA. DNA is the instructions for how each cell and/or organism functions. Differences in that DNA help determine what form that life takes and what traits it has or doesn't have. For example, each human in the world shares an almost perfect match of DNA with each other human on the planet. According to the National Human Genome Research Institute, "All human beings are 99.9 percent identical in their genetic makeup." This indicates that only a relatively small portion of our genetic makeup is responsible for the variation in traits we see in humanity. This tiny variation is the focus of GWAS. 
+
+All DNA is made up of strands of nucleotide base pairs. And again between humans, 99.9% of it is the same for every person. However, th   ere are places on the genome that differ between individuals, the 0.01%. These, differences are often refered to as single nucleotide polymorphism, or **SNP** locations. They indicate a single nucleotide in the DNA that is different between groups of people. Some individuals might have an A (adenine) in that location while others have a C (cytosine). 
+
+[Maybe insert a picture here to demonstrate the difference in DNA and SNP locations]
+
+It is these locations in the DNA that scientists want to study to see if they can determine what parts of the DNA affect certain traits in an individual. In many instances a case-control study is conducted. A group of individuals with a certain trait of interest is selected, "cases",  along with a "control" group, those without the trait of interest. All individuals have their DNA taken and the SNP location nucleotides are identified. The association of certain nucleotides at those locations and which group the individual belongs to (case or control) is calculated.
+
+The implications of this type of research are every expanding. With enough quality information doctors are starting to be able to measure an individuals predispositions to certain diseases like type 2 diabetes. An individual who knows that they are more likely to develop type 2 diabetes has the opportunity to take specific preventative measures and hopefully never develop diabetes. The same thing could be done with medications. Doctors and pharmacists would be able to more successfully recommend or prescribe the most effective mediation at the most optimal dose. 
+
+# A Working Example
+
+A basic GWAS includes several steps:
+
+1) **Data Collection**
+2) **Genotyping**
+3) **Data Quality Control Measures**
+4) **Statistical Test of Each SNP**
+5) **Summarise Results**
+6) **Replication**
+
+
+In order to best understand this we will follow a working example in R by **Bart-Jan van Rossum.** The original work through can be found [here](https://cran.r-project.org/web/packages/statgenGWAS/vignettes/GWAS.html). For the purposes of this work through, the Data Collection and Genotyping steps have already been completed.
+
+
+## Set Up
+
+There are several different programming tools for performing a GWAS. One of the most popular is PLINK. However, the simplest one I have found that will be more familiar for students is the "statgenGWAS' package in R, which you will need to install before following along with the working example. (See next code chunk)
+
+::: panel-tabset
+
+### Package and Library
+
+```{r, warning=FALSE}
+#install the needed package and load the library
+
+#uncomment the next line and run the code once to install the package. 
+#install.packages("statgenGWAS") 
+
+library(statgenGWAS)
+```
+
+### Load in the data 
+The data used for this example comes included in the statgenGWAS package, and is provided by the European Union project [DROPS](https://entrepot.recherche.data.gouv.fr/dataset.xhtml?persistentId=doi:10.15454/IASSTN) regarding their studies in maize, type "?dropsData" in your R console for more information on DROPS and for the meta data for each of the three data sets we will be using. 
+
+```{r}
+#Load the data sets needed into your environment.
+#You can uncomment the View commands and run them
+#in order to explore the data and see what it looks like. 
+
+#dropsMarkers holds the SNP data, including SNP name and the nucleotide information at that SNP location coded as 0,1,2. 
+data(dropsMarkers)
+#View(dropsMarkers)
+
+#dropsMap holds the SNP location data, including the name of the SNP, which Chromosome its on
+#what position on that chromosome it is, and the base pairs of the SNP 
+data(dropsMap)
+#View(dropsMap)
+
+#dropsPheno holds the phenotypic data for the associated genotype of each of the maize plants studied
+data(dropsPheno)
+#View(dropsPheno)
+```
+
+### Create gData Class Object
+To use this package to run a GWAS we need to put the data we have into an object of class "gData", this stands for genotypic Data. This object will contain all the information needed to run a GWAS using the statgenGWAS package. Basically, we are taking the three data sets, modifying them slightly and then combining them so all the information they have is in one place.  With PLINK and other r-packages for GWAS, multiple files and file types are used in conjunction with one another which make an already complex study even more complicated. The gData object is another reason I prefer to use statgenGWAS. There are a few strict requirements that need to be followed when creating the gData object. Read the comments in the code chunks carefully so you understand what the code is doing.   
+
+**STEP 1** 
+```{r}
+# The dropsMarkers data has the genotypes listed as the first column, however they need to be
+#changed to be the row names, so we have a matrix of numbers where the rows are the genotypes
+#and the columns are the SNP locations.
+
+#change the row names in the dropsMarkers data set to be the "Ind" columnc cell values. 
+rownames(dropsMarkers) <- dropsMarkers[["Ind"]]
+
+#remove the "Ind" column from the data set, that information is now stored in the row names. 
+dropsMarkers <- dropsMarkers[colnames(dropsMarkers) != "Ind"]
+
+#Note: Its always a good idea to go back and view the data frame you just changed to make sure 
+#the changes took place, and to ensure you understand what it is the code did. 
+#Uncomment and run the next line to View the dropsMarkers data set and see what changed. 
+#View(dropsMarkers)
+
+```
+
+**Step 2**
+```{r}
+#Here we will do something similar to what we just did with dropsMarkers but with the dropsMap data.
+#First we need to change the row names to be the SNP location names.
+rownames(dropsMap) <- dropsMap[["SNP.names"]]
+
+#Then we need to rename the Chromosome and Position columns to be "chr" and "pos" respectively
+#The other columns are not needed in the gData object so you can remove them if you wish, however its easier to just ignore them. 
+colnames(dropsMap)[match(c("Chromosome", "Position"), colnames(dropsMap))] <- c("chr", "pos")
+```
+
+**Step 3**
+```{r}
+#In this step we actaully create the gData object using the "createGData" function.
+# Create a gData object containing map and marker information.
+gDataDrops <- createGData(geno = dropsMarkers, map = dropsMap)
+
+#Note: This is just a basic gData object. For more complex GWAS, other information such as
+#co-variants can be added later. We will demonstrate this by adding the phenotypic data in the
+#next step.
+```
+
+**Step 4**
+```{r}
+#now we need to add the phenotypic data to the gDAtA object
+
+# First we need to rename the Variety_ID column to "genotype" so the gData will recognize it.
+colnames(dropsPheno)[colnames(dropsPheno) == "Variety_ID"] <- "genotype"
+
+#The dropsPheno data set contains data from several experiments. This code splits the data frame
+#into several data frames grouped by "Experiment" and puts those data frames in a list. 
+#If there was only one experiment done then you could simply add it by itself without splitting it.
+## Select relevant columns and convert data to a list.
+dropsPhenoList <- split(x = dropsPheno[c("genotype", "grain.yield",
+                                         "grain.number", "seed.size",
+                                         "anthesis", "silking", "plant.height",
+                                         "tassel.height", "ear.height")], 
+                        f = dropsPheno[["Experiment"]])
+# Add phenotypic data to gDataDrops.
+gDataDrops <- createGData(gData = gDataDrops, pheno = dropsPhenoList)
+
+```
+
+
+### Summarise the gDataDrops
+
+We can summarize the gData object with the following code to get an overall sense of the data it contains and what some of the parameters of the GWAS test we will be conducting will be. 
+
+```{r}
+## Summarize gDataDrops.
+summary(gDataDrops, trials = "Mur13W")
+```
+
+
+:::
+
+## Data Qaulity Control
+
+Ensuring that you have quality data is one of the most significant ways you can ensure you have quality results. The National Library of Medicine published an article on this topic saying, "the capability of GWAS to identify true genetic associations depends upon the overall quality of the data." (Turner et al., 2011) Many of these Quality Controls can be done before hand when collecting the data while some can be done just before running the actual test. While they apply to studies where individuals are the subjects and not plants, the same concepts can be used in either. This is not an extensive list, but its a good starting point for what too look for when performing quality control on GWAS data. Note, that for this work through we are assuming the data has been quality controlled.  
+
+**Remove low-quality genotypes and SNPs**:  Mistakes in data collection or genotyping can result in missing genotype data for an individual. Examples include a low call rate or high missingness, meaning that there are gaps in the data for an individual or SNP. Therefore, such genotypes are typically excluded from the analysis. It is common for SNPs to be excluded from a study if they have a call rate less than 98%, however some studies go as low as 85%. 
+
+**Minor Allele Frequency (MAF)**: SNPs with very low minor allele frequency may have limited statistical power to detect associations. This means that SNPs that are rare dont have as much value for this type of association study. Excluding such SNPs helps focus the analysis on more informative variants. Its recommended to remove SNPs that have a frequency less than one percent (<1%).(Turner et al., 2011)
+
+**Hardy-Weinberg Equilibrium (HWE)**: HWE is a principle in population genetics that describes the expected proportions of genotypes in a population. SNPs that significantly deviate from HWE may indicate genotyping errors or population stratification. It is common to exclude SNPs that deviate from HWE from the analysis.
+
+**Principal Component Analysis (PCA)**: PCA helps identify population structure and correct for population stratification, which can lead to false-positive associations. By examining the genetic variation within the dataset, PCA can identify clusters of individuals with similar ancestry. Adjusting for population structure in the GWAS helps ensure robust and accurate results.
+
+**Outlier detection**: Outliers in the population structure analysis may indicate sample mix-ups or other issues. It is important to identify and remove such outliers to maintain the integrity of the analysis.
+
+**Identifying related individuals**: Genomic data may contain samples from related individuals (e.g siblings or cousins), which can violate the assumption of independence in GWAS. Identifying and removing related individuals or adjusting for relatedness using methods like kinship estimation helps avoid spurious associations.
+
+
+## Run the GWAS
+
+We can now run a single trait GWAS on the gData object that we have created. While the code does it quite nicely for us and we get the results back in a nice summarized way, its important to know what is happening behind the scenes. When a GWAS study is conducted we are simply running several regressions, one for each SNP location. The trait we are studying determines the type of regression that is run. If it is a qualitative trait such as those in case-control studies (e.g. having a disease vs not having a disease) a logistical regression is used. On the other hand when a quantitative trait is being measured (e.g. height, weight, ect...) a linear regression model is used. The traits the data measures in this example for maize are all quantitative, thus our results will be linear regression analyses of each SNP. 
+
+[We need some graphics here to demonstrate this good ones we can include in the poster]
+
+Below is the code for running a single trait GWAS using the gData object we created. We will run two at the same time, one for the "grain.yield" trait and one for the "grain.number" trait. We will use only one of the experiments in the data set **Mur13W**.  
+
+```{r}
+# Run single trait GWAS for traits 'grain.yield' and 'grain.number' for trial Mur13W.
+# Like many other statistical tests we save the result as an object that we can refer back to.
+#Note that running the test may take a few minutes depending on the data set size, and
+#how many traits you want to look at. 
+GWASDrops <- runSingleTraitGwas(gData = gDataDrops,
+                                trials = "Mur13W",
+                                traits = c("grain.yield", "grain.number"))
+```
+
+The following are the descriptions of the outputs of the GWAS results:
+
+
+**trait**..........trait name
+
+**snp**............SNP name
+
+**chr**............chromosome on which the SNP is located
+
+**pos**............position of the SNP on the chromosome
+
+**allFreq**........allele frequency of the SNP
+
+**pValue**.........P-value for the SNP
+
+**effect**.........effect of the SNP on the trait value
+
+**effectSe**.......standard error of the effect of the SNP on the trait value
+
+**RLR2**...........likelihood-ratio-based R2 as defined in Sun et al. (2010)
+
+**LOD**............LOD score for the SNP, defined as −log10(pValue)
+
+```{r}
+#Now lets print the results of the test using the GWAResult table from the following code. 
+print(head(GWASDrops$GWAResult$Mur13W), row.names = FALSE)
+```
+
+As you can see the results are several linear regression analysis results listed for each SNP. Thus we have a p-value for each as well. You are probably currently aware that in the statistics world the default commonly used for level of significance is $\alpha = 0.05$. When doing genomic statistical research we run into an issue using 0.05. Typically a in a GWAS study you run hundreds of thousands if not millions of SNPs. If we have 5% chance of committing a type 1 error every time we run one of the regressions on a SNP we potentially end up with thousands of incorrect results.
+
+To combat this a **Bonferoni Correction** is used. This is where we divide the commonly accepted level of significance, 0.05, by the number of SNP locations we are testing (or in general the number of statistical tests we are performing). Thus we, protect ourselves from inflating the number of type 1 errors we make. Through doing this the industry standard level of significance for genomic statistics has been reduced from 0.05 to  $5 * 10^-8$ for use in studies where a large amount of statistical tests are performed. 
+
+Since we tested 41722 markers or SNPs, the level of significance we should be using when analyzing these p-values is $\alpha = 0.05/41722$ or $\alpha =$ `r 0.05/41722`. So only those SNPs whose p-values are less than our newly calculated $\alpha$ would we consider significant and classify as being associated with the trait of interest. Which brings us to another summary tool we can use on our GWAS:
+You can also do an overall summary of the GWAS by running the following code. 
+
+```{r}
+# Create summary of GWASDrops.
+summary(GWASDrops)
+```
+
+Of particular interest is the "Number of significant SNPs:" section under each trait we tested. Which gives us an "at a glance" look at the results based off of calculating a new alpha as we did above. With this GWAS we would say that 5 of SNP locations have statistically significant associations with the grain.yield trait.
+
+
+
+```{r}
+## Plot a manhattan plot of GWAS Drops.
+plot(GWASDrops, plotType = "manhattan", trait = "grain.yield")
+```
+
+
+
+### Sources
+
+
+https://www.youtube.com/watch?v=sOP8WacfBM8
+
+
+https://www.genome.gov/about-genomics/fact-sheets/Genetics-vs-Genomics#:~:text=All%20human%20beings%20are%2099.9,about%20the%20causes%20of%20diseases.
+
+
+Turner S, Armstrong LL, Bradford Y, Carlson CS, Crawford DC, Crenshaw AT, de Andrade M, Doheny KF, Haines JL, Hayes G, Jarvik G, Jiang L, Kullo IJ, Li R, Ling H, Manolio TA, Matsumoto M, McCarty CA, McDavid AN, Mirel DB, Paschall JE, Pugh EW, Rasmussen LV, Wilke RA, Zuvich RL, Ritchie MD. Quality control procedures for genome-wide association studies. Curr Protoc Hum Genet. 2011 Jan;Chapter 1:Unit1.19. doi: 10.1002/0471142905.hg0119s68. PMID: 21234875; PMCID: PMC3066182.
